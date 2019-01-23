@@ -1,0 +1,9 @@
+/out
+/dist
+/.gradle
+/.idea
+/build
+/gradle
+gradlew
+gradlew.bat
+VisionProcessingTester.iml
