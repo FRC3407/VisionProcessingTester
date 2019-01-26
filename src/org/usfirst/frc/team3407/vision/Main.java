@@ -5,12 +5,26 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Main {
 
-    private static final Scalar RED = new Scalar(255, 0, 0);
+    static {
+        System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    }
+
+    private static final Scalar RED = new Scalar(0, 0, 255);
+    private static final double[][] HSL = {
+        {49.0, 57.0, 126.0},
+        {20.0, 23.0, 90.0},
+    };
+    private static final Scalar[] COLORS = {
+        new Scalar(0, 0, 255),
+        new Scalar(255, 0, 0)
+    };
 
     public static void main(String[] args) {
         new Main().run((args.length == 0)? null : args[0]);
@@ -18,15 +32,15 @@ public class Main {
 
     public void run(String fileName) {
         try {
-            processFrames(fileName, "C:\\Users\\jstho\\GRIP\\output\\out.jpg");
+            Path file = FileSystems.getDefault().getPath(fileName);
+            String baseName = file.getFileName().toString();
+            processFrames(fileName, "C:\\Users\\jstho\\GRIP\\output\\out_" + baseName);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private void processFrames(String fileName, String outputFileName) throws Exception {
-        GripPipeline gripPipeline = new GripPipeline();
-
         VideoCapture videoCapture = (fileName == null) ? new VideoCapture(0) : new VideoCapture(fileName);
 
         System.out.println(String.format("Starting video capture for %s: open=%s", fileName, videoCapture.isOpened()));
@@ -35,12 +49,15 @@ public class Main {
         int frameCount = 0;
         while (videoCapture.read(frame)) {
             System.out.println("FrameCount=" + frameCount++);
-            gripPipeline.process(frame);
-            List<Point[]> contours = processPipelineOutputs(gripPipeline);
-            System.out.println(String.format("Found %s possible target matches", contours.size()));
-            for(Point[] outlinePoints : contours) {
-                for (int i = 0;i < 4;i++) {
-                    Imgproc.line(frame, outlinePoints[i], outlinePoints[(i + 1)%4], RED, 3);
+            for (int i = 0;i < HSL.length;i++) {
+                List<RotatedRect> rectangles = runPipeline(frame, HSL[i][0], HSL[i][1], HSL[i][2]);
+                System.out.println(String.format("Found %s possible target matches", rectangles.size()));
+                for (RotatedRect rectangle : rectangles) {
+                    Point[] points = new Point[4];
+                    rectangle.points(points);
+                    for (int p = 0; p < 4; p++) {
+                        Imgproc.line(frame, points[p], points[(p + 1) % 4], COLORS[i], 3);
+                    }
                 }
             }
             Imgcodecs.imwrite(outputFileName, frame);
@@ -48,11 +65,27 @@ public class Main {
         }
     }
 
-    private List<Point[]> processPipelineOutputs(GripPipeline pipeline) {
+    private List<RotatedRect> runPipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
+        GripPipeline gripPipeline = executePipeline(image, minHue, minSaturation, minLuminance);
+        return processPipelineOutputs(gripPipeline);
+    }
+
+    private GripPipeline executePipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
+        GripPipeline gripPipeline = new GripPipeline();
+        gripPipeline.setMinHue(minHue);
+        gripPipeline.setMinSaturation(minSaturation);
+        gripPipeline.setMinLuminance(minLuminance);
+
+        gripPipeline.process(image);
+
+        return gripPipeline;
+    }
+
+    private List<RotatedRect> processPipelineOutputs(GripPipeline pipeline) {
         List<MatOfPoint> contours = pipeline.findContoursOutput();
         System.out.println(String.format("Found %s contours", contours.size()));
 
-        ArrayList<Point[]> filtered = new ArrayList<>();
+        ArrayList<RotatedRect> filtered = new ArrayList<>();
         for(MatOfPoint contour : contours) {
             MatOfPoint2f matOfPoint2f = new MatOfPoint2f();
             contour.convertTo(matOfPoint2f, CvType.CV_32FC2);
@@ -65,9 +98,7 @@ public class Main {
             if (inAreaRange && inRatioRange) {
                 System.out.println(String.format("Center=%s Area=%s Angle=%s Ratio=%s", rr.center, area, rr.angle,
                         ratio));
-                Point[] points = new Point[4];
-                rr.points(points);
-                filtered.add(points);
+                filtered.add(rr);
             }
         }
 
