@@ -85,6 +85,7 @@ public class Main {
         int frameCount = 0;
         while (videoCapture.read(frame)) {
             System.out.println("\nFrameCount=" + frameCount++);
+            System.out.println(String.format("Max-X is %s and Max-Y is %s", frame.width(), frame.height()));
 
             ArrayList<RotatedRect> possibeTargetMatches = new ArrayList<>();
             for (int i = 0;i < HSL.length;i++) {
@@ -98,9 +99,16 @@ public class Main {
 
             List<HatchTarget> hatchTargets = findHatchTargets(possibeTargetMatches);
             System.out.println(String.format("Found %s possible hatch matches", hatchTargets.size()));
+            hatchTargets = filterSameHatchTargets(hatchTargets);
+            System.out.println(String.format("Found %s hatch matches after removing duplicates", hatchTargets.size()));
+            int targetIndex = 0;
             for (HatchTarget hatchTarget : hatchTargets) {
                 drawRotatedRectangle(frame, hatchTarget.left, BLACK);
                 drawRotatedRectangle(frame, hatchTarget.right, BLACK);
+                double offset = hatchTarget.getOffset(frame.width());
+                System.out.println(String.format("Target %s is %s pixels %s of center", targetIndex, Math.abs(offset),
+                        (offset < 0) ? "left" : "right"));
+                targetIndex++;
             }
 
             Imgcodecs.imwrite(outputFileName, frame);
@@ -118,8 +126,12 @@ public class Main {
     }
 
     private List<RotatedRect> runPipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
+        long startTime = System.currentTimeMillis();
         GripPipeline gripPipeline = executePipeline(image, minHue, minSaturation, minLuminance);
-        return processPipelineOutputs(gripPipeline, MIN_AREA, MAX_AREA, TARGET_RATIO, TARGET_RATIO_OFFSET);
+        List<RotatedRect> rotatedRects = processPipelineOutputs(gripPipeline, MIN_AREA, MAX_AREA, TARGET_RATIO,
+                TARGET_RATIO_OFFSET);
+        System.out.println(String.format("Pipeline ran in %s milliseconds", System.currentTimeMillis() - startTime));
+        return rotatedRects;
     }
 
     private GripPipeline executePipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
@@ -201,6 +213,37 @@ public class Main {
                 (centerXDifference < RECTANGLE_PAIR_MAX_X_DIFFERENCE);
     }
 
+    private List<HatchTarget> filterSameHatchTargets(List<HatchTarget> targets) {
+        if (targets.size() < 2) {
+            return targets;
+        }
+
+        ArrayList<HatchTarget> currentTargets = new ArrayList<>(targets);
+        while (true) {
+            ArrayList<HatchTarget> newTargets = new ArrayList<>();
+            HatchTarget singleTarget = currentTargets.get(0);
+            newTargets.add(singleTarget);
+            for (int i = 1; i < currentTargets.size(); i++) {
+                if (!isSameHatchTarget(singleTarget, currentTargets.get(i))) {
+                    newTargets.add(currentTargets.get(i));
+                }
+            }
+            if (currentTargets.size() == newTargets.size()) {
+                break;
+            }
+            currentTargets = newTargets;
+        }
+
+        return currentTargets;
+    }
+
+    private boolean isSameHatchTarget(HatchTarget ht1, HatchTarget ht2) {
+        double midpoint1 = ht1.getMidPoint();
+        double midpoint2 = ht2.getMidPoint();
+
+        return Math.abs(midpoint1 - midpoint2) < 10;
+    }
+
     class HatchTarget {
         private RotatedRect left;
         private RotatedRect right;
@@ -213,6 +256,15 @@ public class Main {
                 left = rr2;
                 right = rr1;
             }
+        }
+
+        public double getMidPoint() {
+            return (left.center.x + right.center.x) / 2;
+        }
+
+        public double getOffset(double range) {
+            double midpoint = range / 2;
+            return getMidPoint() - midpoint;
         }
     }
 }
