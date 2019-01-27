@@ -1,11 +1,20 @@
 package org.usfirst.frc.team3407.vision;
 
-import org.opencv.core.*;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
+import org.opencv.core.RotatedRect;
+import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 
+import java.io.File;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,18 +35,39 @@ public class Main {
         new Scalar(255, 0, 0)
     };
 
+    private static final double MIN_AREA = 1000;
+    private static final double MAX_AREA = 4000;
+    private static final double TARGET_RATIO = 5.0;
+    private static final double TARGET_RATIO_OFFSET = 2.5;
+
+    private static final String OUTPUT_PATH_PREFIX = "C:\\Users\\jstho\\GRIP\\output\\out_";
+
     public static void main(String[] args) {
         new Main().run((args.length == 0)? null : args[0]);
     }
 
-    public void run(String fileName) {
+    public void run(String pathName) {
         try {
-            Path file = FileSystems.getDefault().getPath(fileName);
-            String baseName = file.getFileName().toString();
-            processFrames(fileName, "C:\\Users\\jstho\\GRIP\\output\\out_" + baseName);
+            Path path = FileSystems.getDefault().getPath(pathName);
+            if (Files.isDirectory(path)) {
+                File[] files = path.toFile().listFiles();
+                for (File file : files) {
+                    Path filePath = file.toPath();
+                    if (Files.isRegularFile(filePath)) {
+                        processFrames(filePath);
+                    }
+                }
+            } else {
+                processFrames(path);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void processFrames(Path path) throws Exception {
+        String fileName = path.getFileName().toString();
+        processFrames(path.toString(), OUTPUT_PATH_PREFIX  + fileName);
     }
 
     private void processFrames(String fileName, String outputFileName) throws Exception {
@@ -67,7 +97,7 @@ public class Main {
 
     private List<RotatedRect> runPipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
         GripPipeline gripPipeline = executePipeline(image, minHue, minSaturation, minLuminance);
-        return processPipelineOutputs(gripPipeline);
+        return processPipelineOutputs(gripPipeline, MIN_AREA, MAX_AREA, TARGET_RATIO, TARGET_RATIO_OFFSET);
     }
 
     private GripPipeline executePipeline(Mat image, double minHue, double minSaturation, double minLuminance) {
@@ -81,7 +111,8 @@ public class Main {
         return gripPipeline;
     }
 
-    private List<RotatedRect> processPipelineOutputs(GripPipeline pipeline) {
+    private List<RotatedRect> processPipelineOutputs(GripPipeline pipeline, double minArea, double maxArea,
+                                                     double targetRatio, double targetRatioOffset) {
         List<MatOfPoint> contours = pipeline.findContoursOutput();
         System.out.println(String.format("Found %s contours", contours.size()));
 
@@ -93,8 +124,8 @@ public class Main {
             double area = rr.size.area();
             double ratio = rr.size.height / rr.size.width;
 
-            boolean inAreaRange = (area > 500) && (area < 8000);
-            boolean inRatioRange = inRatioRange(ratio, 10, 8);
+            boolean inAreaRange = (area > minArea) && (area < maxArea);
+            boolean inRatioRange = inRatioRange(ratio, targetRatio, targetRatioOffset);
             if (inAreaRange && inRatioRange) {
                 System.out.println(String.format("Center=%s Area=%s Angle=%s Ratio=%s", rr.center, area, rr.angle,
                         ratio));
