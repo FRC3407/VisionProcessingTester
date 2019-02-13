@@ -1,5 +1,8 @@
 package org.usfirst.frc.team3407.vision;
 
+import frc.team3407.vision.HatchTarget;
+import frc.team3407.vision.HatchTargetRecognizer;
+
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
@@ -13,7 +16,6 @@ import java.io.File;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 public class Main {
@@ -27,7 +29,7 @@ public class Main {
     private static final Scalar RED = new Scalar(0, 0, 255);
     private static final Scalar BLACK = new Scalar(0, 0, 0);
 
-    private static final Scalar[] COLORS = { RED, BLUE };
+    private static final Scalar[] COLORS = { RED, BLUE, GREEN };
 
     private static final String OUTPUT_PATH_PREFIX = "C:\\Users\\jstho\\GRIP\\output\\out_";
 
@@ -61,6 +63,8 @@ public class Main {
 
     private void processFrames(String fileName, String outputFileName) throws Exception {
         VideoCapture videoCapture = (fileName == null) ? new VideoCapture(0) : new VideoCapture(fileName);
+        int delayMilliseconds = (fileName == null) ? 3000 : 0;
+
         HatchTargetRecognizer hatchTargetRecognizer = new HatchTargetRecognizer();
 
         System.out.println(String.format("\nStarting video capture for %s: open=%s", fileName, videoCapture.isOpened()));
@@ -71,21 +75,22 @@ public class Main {
             System.out.println("\nFrameCount=" + frameCount++);
             System.out.println(String.format("Max-X is %s and Max-Y is %s", frame.width(), frame.height()));
 
-            List<HatchTargetRecognizer.HatchTarget> hatchTargets = hatchTargetRecognizer.find(frame,
+            List<HatchTarget> hatchTargets = hatchTargetRecognizer.find(frame,
                     (r, i) -> drawRotatedRectangle(frame, r, COLORS[i]));
 
             int targetIndex = 0;
-            for (HatchTargetRecognizer.HatchTarget hatchTarget : hatchTargets) {
+            for (HatchTarget hatchTarget : hatchTargets) {
                 drawRotatedRectangle(frame, hatchTarget.getLeft(), BLACK);
                 drawRotatedRectangle(frame, hatchTarget.getRight(), BLACK);
                 double offset = hatchTarget.getOffset(frame.width());
-                System.out.println(String.format("Target %s is %s pixels %s of center", targetIndex, Math.abs(offset),
-                        (offset < 0) ? "left" : "right"));
+                System.out.println(String.format("Target %s is %s pixels %s of center with side (left=%s right=%s)",
+                        targetIndex, Math.abs(offset), (offset < 0) ? "left" : "right",
+                        hatchTarget.getLeftLongSide(), hatchTarget.getRightLongSide()));
                 targetIndex++;
             }
 
             Imgcodecs.imwrite(outputFileName, frame);
-            Thread.sleep(5000);
+            Thread.sleep(delayMilliseconds);
         }
     }
 
