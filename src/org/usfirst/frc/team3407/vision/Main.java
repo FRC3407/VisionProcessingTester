@@ -33,23 +33,29 @@ public class Main {
 
     private static final String OUTPUT_PATH_PREFIX = "C:\\Users\\jstho\\GRIP\\output\\out_";
 
+    private static final long DELAY_MILLISECONDS = 3000;
+
     public static void main(String[] args) {
         new Main().run((args.length == 0)? null : args[0]);
     }
 
     public void run(String pathName) {
         try {
-            Path path = FileSystems.getDefault().getPath(pathName);
-            if (Files.isDirectory(path)) {
-                File[] files = path.toFile().listFiles();
-                for (File file : files) {
-                    Path filePath = file.toPath();
-                    if (Files.isRegularFile(filePath)) {
-                        processFrames(filePath);
-                    }
-                }
+            if (pathName.startsWith("http")) {
+                processFrames(pathName, OUTPUT_PATH_PREFIX + "roborio.jpg", DELAY_MILLISECONDS);
             } else {
-                processFrames(path);
+                Path path = FileSystems.getDefault().getPath(pathName);
+                if (Files.isDirectory(path)) {
+                    File[] files = path.toFile().listFiles();
+                    for (File file : files) {
+                        Path filePath = file.toPath();
+                        if (Files.isRegularFile(filePath)) {
+                            processFrames(filePath);
+                        }
+                    }
+                } else {
+                    processFrames(null, OUTPUT_PATH_PREFIX + "pc_camera.out", DELAY_MILLISECONDS);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -58,12 +64,11 @@ public class Main {
 
     private void processFrames(Path path) throws Exception {
         String fileName = path.getFileName().toString();
-        processFrames(path.toString(), OUTPUT_PATH_PREFIX  + fileName);
+        processFrames(path.toString(), OUTPUT_PATH_PREFIX  + fileName, 0);
     }
 
-    private void processFrames(String fileName, String outputFileName) throws Exception {
+    private void processFrames(String fileName, String outputFileName, long delayMilliseconds) throws Exception {
         VideoCapture videoCapture = (fileName == null) ? new VideoCapture(0) : new VideoCapture(fileName);
-        int delayMilliseconds = (fileName == null) ? 3000 : 0;
 
         HatchTargetRecognizer hatchTargetRecognizer = new HatchTargetRecognizer();
 
@@ -83,9 +88,10 @@ public class Main {
                 drawRotatedRectangle(frame, hatchTarget.getLeft(), BLACK);
                 drawRotatedRectangle(frame, hatchTarget.getRight(), BLACK);
                 double offset = hatchTarget.getOffset(frame.width());
-                System.out.println(String.format("Target %s is %s pixels %s of center with side (left=%s right=%s)",
+                System.out.println(String.format("Target %s is %s pixels %s of center with side (left=%s right=%s) and angle (left=%s right=%s)",
                         targetIndex, Math.abs(offset), (offset < 0) ? "left" : "right",
-                        hatchTarget.getLeftLongSide(), hatchTarget.getRightLongSide()));
+                        hatchTarget.getLeftLongSide(), hatchTarget.getRightLongSide(),
+                        hatchTarget.getLeft().angle, hatchTarget.getRight().angle));
                 targetIndex++;
             }
 
